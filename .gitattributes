@@ -1,0 +1,7 @@
+# Track heavy model artifacts using Git LFS
+*.pt filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+# Keep CSV and artifacts regular
+*.csv text
+# Ignore Windows LF/CR for large binary
+*.zip binary
