@@ -1,0 +1,61 @@
+# Python artifacts
+__pycache__/
+*.pyc
+.env
+.env.local
+.vscode/
+.idea/
+
+# Notebooks and outputs
+.ipynb_checkpoints/
+*.ipynb
+
+# Build/dist
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data & datasets (exclude large files)
+fer2013/
+fer2013.zip
+Video_Song_Actor_02/
+Video_Song_Actor_06/
+Audio_Song_Actors_01-24/
+
+# Torch artifacts
+*.ckpt
+# Track model artifacts through git-lfs, do not store raw in git history
+# We will track *.pth and *.pt with git-lfs
+
+# Temp results & logs
+massive_preds*.csv
+spot_preds*.csv
+massive_preds_debug*/
+spot_preds_nonorm*_debug*/
+*_debug/
+
+# Python virtual / environment
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Misc
+.vagrant/
+*.log
+
+# Local test images
+test.jpg
+
+# Safety: never commit secrets
+secrets.yaml
+.secrets
+*.pem
+*.key
