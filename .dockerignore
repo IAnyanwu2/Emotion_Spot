@@ -1,0 +1,16 @@
+features/
+manifests/
+fer2013/
+models/
+__pycache__/
+*.zip
+*.tar.gz
+*.pth
+*.pt
+.vscode/
+.git/
+venv/
+env/
+*.egg-info/
+dist/
+build/

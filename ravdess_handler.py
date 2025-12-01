@@ -44,28 +44,19 @@ class RAVDESSDataset:
     def _scan_dataset(self):
         """Scan for RAVDESS video and audio files"""
         print("🔍 Scanning RAVDESS dataset...")
-        
-        # Scan video directories
-        video_dirs = [
-            self.data_root / "Video_Song_Actor_02",
-            self.data_root / "Video_Song_Actor_06"
-        ]
-        
-        for video_dir in video_dirs:
-            if video_dir.exists():
-                for actor_dir in video_dir.iterdir():
-                    if actor_dir.is_dir():
-                        for video_file in actor_dir.glob("*.mp4"):
-                            self.video_paths.append(video_file)
-        
-        # Scan audio directory
-        audio_dir = self.data_root / "Audio_Song_Actors_01-24"
-        if audio_dir.exists():
-            for actor_dir in audio_dir.iterdir():
-                if actor_dir.is_dir():
-                    for audio_file in actor_dir.glob("*.wav"):
-                        self.audio_paths.append(audio_file)
-        
+        # Generic recursive scan for audio/video files so we pick up Song and Speech sets
+        # This is more robust to differing folder names (e.g., Video_Song_Actors_01-10)
+        video_files = list(self.data_root.rglob('*.mp4'))
+        audio_files = list(self.data_root.rglob('*.wav'))
+
+        # Filter out any non-RAVDESS-like filenames if necessary (keep 7-part dashed names)
+        def is_ravdess(fn):
+            stem = Path(fn).stem
+            return len(stem.split('-')) == 7
+
+        self.video_paths = [p for p in video_files if is_ravdess(p.name)]
+        self.audio_paths = [p for p in audio_files if is_ravdess(p.name)]
+
         print(f"✅ Found {len(self.video_paths)} video files")
         print(f"✅ Found {len(self.audio_paths)} audio files")
     
