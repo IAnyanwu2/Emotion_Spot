@@ -17,8 +17,8 @@ provider "oci" {
 
 // Example compute instance. Update shape / image and networking to match your tenancy.
 resource "oci_core_instance" "training_vm" {
-  compartment_id = var.compartment_id
-  availability_domain = var.availability_domain
+  compartment_id = var.compartment_ocid
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
   shape = var.instance_shape
 
   display_name = "rcma-training-builder"
@@ -26,16 +26,16 @@ resource "oci_core_instance" "training_vm" {
   source_details {
     # Use an Oracle-provided Linux image or custom image OCID
     source_type = "image"
-    image_id = var.image_ocid
+    image_id = var.image_id
   }
 
   metadata = {
-    ssh_authorized_keys = file(var.ssh_public_key_path)
+    ssh_authorized_keys = file(var.ssh_pub_key_path)
     user_data = base64encode(file("${path.module}/startup.sh"))
   }
 
   create_vnic_details {
-    subnet_id = var.subnet_id
+    subnet_id = (var.subnet_id != "" && var.subnet_id != "<SUBNET_OCID>") ? var.subnet_id : oci_core_subnet.rcma_subnet.id
     assign_public_ip = true
   }
 }
@@ -73,59 +73,64 @@ resource "oci_objectstorage_bucket" "features_bucket" {
   name           = var.bucket_name
 }
 
+# Create a VCN and subnet if an existing subnet OCID is not provided.
+resource "oci_core_vcn" "rcma_vcn" {
+  compartment_id = var.compartment_ocid
+  display_name   = "rcma-vcn"
+  cidr_block     = var.vcn_cidr
+}
+
+resource "oci_core_subnet" "rcma_subnet" {
+  compartment_id       = var.compartment_ocid
+  vcn_id               = oci_core_vcn.rcma_vcn.id
+  display_name         = "rcma-subnet"
+  cidr_block           = var.subnet_cidr
+  prohibit_public_ip_on_vnic = false
+  dns_label            = "rcma"
+}
+
 variable "bucket_name" { default = "emotion-spot-features" }
 
 # Basic compute instance (replace shape with GPU shape if needed)
-resource "oci_core_instance" "train_instance" {
+resource "oci_core_instance" "training_vm" {
+  compartment_id = var.compartment_ocid
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
-  compartment_id      = var.compartment_ocid
-  shape               = var.instance_shape
+  shape = var.instance_shape
 
-  create_vnic_details {
-    subnet_id = var.subnet_id
+  display_name = "rcma-training-builder"
+
+  source_details {
+    # Use an Oracle-provided Linux image or custom image OCID
+    source_type = "image"
+    image_id = var.image_id
   }
 
   metadata = {
     ssh_authorized_keys = file(var.ssh_pub_key_path)
-    user_data = base64encode(<<-EOT
-      #!/bin/bash
-      set -e
-      apt-get update
-      apt-get install -y docker.io python3-pip unzip curl || true
+    user_data = base64encode(templatefile("${path.module}/startup.sh", {
+      GIT_REPO       = var.git_repo,
+      REPO_TARBALL   = var.repo_tarball,
+      ARTIFACT_BUCKET= var.bucket_name,
+      OCIR_USERNAME  = var.ocir_user,
+      OCIR_PASSWORD  = var.ocir_auth_token,
+      OCIR_REGISTRY  = var.ocir_registry,
+      DOCKER_IMAGE   = var.docker_image,
+      RUN_SMOKE      = tostring(var.run_smoke),
+      FEATURES_ZIP   = var.features_zip,
+      MANIFEST_ZIP   = var.manifest_zip,
+      OCIR_NAMESPACE = var.ocir_namespace
+    }))
+  }
 
-      # Docker login to OCIR using auth token provided as a variable
-      echo "Logging into OCIR registry ${var.ocir_registry} as ${var.ocir_user}"
-      echo "${var.ocir_auth_token}" | docker login ${var.ocir_registry} -u "${var.ocir_user}" --password-stdin || true
-
-      # Pull the training image
-      docker pull ${var.docker_image} || true
+  create_vnic_details {
+    subnet_id = (var.subnet_id != "" && var.subnet_id != "<SUBNET_OCID>") ? var.subnet_id : oci_core_subnet.rcma_subnet.id
+    assign_public_ip = true
+  }
+}
 
       mkdir -p /home/opc/checkpoints
 
       # Run the training container. Environment vars point to Object Storage bucket and optional checkpoints.
-      docker run --rm \
-        -e OCIR_REGISTRY=${var.ocir_registry} \
-        -e OCIR_USER=${var.ocir_user} \
-        -e OCIR_AUTH_TOKEN='${var.ocir_auth_token}' \
-        -e OCI_BUCKET=${oci_objectstorage_bucket.features_bucket.name} \
-        -e FEATURES_PREFIX='${var.features_prefix}' \
-        -e VISUAL_CHECKPOINT='${var.visual_checkpoint}' \
-        -e AUDIO_CHECKPOINT='${var.audio_checkpoint}' \
-        -v /home/opc/checkpoints:/app/checkpoints \
-        ${var.docker_image} \
-        python train_multimodal_rcma.py --epochs 1 --batch-size 4 --device cuda || true
-    EOT
-    )
-  }
-
-  source_details {
-    source_type = "image"
-    image_id    = var.image_id
-  }
-
-  display_name = "emotion-spot-train"
-}
-
 data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
@@ -133,6 +138,8 @@ data "oci_identity_availability_domains" "ads" {
 variable "instance_shape" { default = "VM.Standard.E3.Flex" }
 variable "image_id" {}
 variable "subnet_id" {}
+variable "vcn_cidr" { default = "10.0.0.0/16" }
+variable "subnet_cidr" { default = "10.0.1.0/24" }
 variable "ssh_pub_key_path" {}
 variable "docker_image" { default = "<region>.ocir.io/<tenancy-namespace>/emotion-spot:latest" }
 

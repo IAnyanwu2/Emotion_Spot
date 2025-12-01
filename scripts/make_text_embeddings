@@ -1,0 +1,40 @@
+# scripts/make_text_embeddings.py
+from transformers import AutoTokenizer, AutoModel
+import torch
+from pathlib import Path
+import numpy as np
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--txt-dir", required=True)
+parser.add_argument("--model", default="distilbert-base-uncased")
+parser.add_argument("--out-dir", default="text_embeddings")
+args = parser.parse_args()
+
+tokenizer = AutoTokenizer.from_pretrained(args.model)
+model = AutoModel.from_pretrained(args.model)
+model.eval()
+
+txt_dir = Path(args.txt_dir)
+out_dir = Path(args.out_dir)
+out_dir.mkdir(parents=True, exist_ok=True)
+
+txt_files = list(txt_dir.rglob("*.txt"))
+print("Found", len(txt_files), "text files")
+
+for i, txt in enumerate(txt_files, 1):
+    txt_text = txt.read_text(encoding="utf-8").strip()
+    if not txt_text:
+        emb = np.zeros((model.config.hidden_size,), dtype=np.float32)
+    else:
+        inputs = tokenizer(txt_text, return_tensors="pt", truncation=True, max_length=128)
+        with torch.no_grad():
+            outputs = model(**inputs)
+            # Use [CLS]-like pooling: mean pooling of last hidden state
+            last = outputs.last_hidden_state.squeeze(0)
+            emb = last.mean(dim=0).cpu().numpy()
+    out_path = out_dir / (txt.stem + ".npy")
+    np.save(out_path, emb)
+    if i % 100 == 0:
+        print(f"{i}/{len(txt_files)}")
+print("Embeddings done")

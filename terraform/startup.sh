@@ -1,8 +1,24 @@
 #!/bin/bash
 # Cloud-init helper script used as Terraform `user_data` for the compute instance.
-# The script assumes Terraform will template necessary OCI config or environment variables.
+# This file is used with Terraform `templatefile` so variables like GIT_REPO,
+# ARTIFACT_BUCKET, REPO_TARBALL, OCIR_USERNAME, OCIR_PASSWORD, OCIR_REGISTRY,
+# DOCKER_IMAGE, RUN_SMOKE, FEATURES_ZIP and MANIFEST_ZIP will be injected.
 
 set -eux
+
+# --- injected variables (Terraform templatefile will replace values) ---
+GIT_REPO="${GIT_REPO:-}"
+REPO_TARBALL="${REPO_TARBALL:-}"
+ARTIFACT_BUCKET="${ARTIFACT_BUCKET:-}"
+OCIR_USERNAME="${OCIR_USERNAME:-}"
+OCIR_PASSWORD="${OCIR_PASSWORD:-}"
+OCIR_REGISTRY="${OCIR_REGISTRY:-iad.ocir.io}"
+DOCKER_IMAGE="${DOCKER_IMAGE:-}"
+RUN_SMOKE="${RUN_SMOKE:-0}"
+FEATURES_ZIP="${FEATURES_ZIP:-features.zip}"
+MANIFEST_ZIP="${MANIFEST_ZIP:-manifest.zip}"
+OCIR_NAMESPACE="${OCIR_NAMESPACE:-}"
+# ---------------------------------------------------------------------
 
 # Basic tools
 apt-get update

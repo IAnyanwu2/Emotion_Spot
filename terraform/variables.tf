@@ -28,3 +28,25 @@ variable "instance_shape" {
   type        = string
   default     = "VM.Standard.E4.Flex"
 }
+
+variable "git_repo" {
+  description = "Optional Git clone URL for the builder to pull the repo"
+  type        = string
+  default     = ""
+}
+
+variable "repo_tarball" {
+  description = "Optional repo tarball object name in the bucket (repo.tar.gz)"
+  type        = string
+  default     = ""
+}
+
+variable "run_smoke" {
+  description = "Whether to run the one-epoch smoke test (1=yes, 0=no)"
+  type        = number
+  default     = 0
+}
+
+variable "features_zip" { description = "Features archive name" default = "features.zip" }
+variable "manifest_zip" { description = "Manifest archive name" default = "manifest.zip" }
+variable "ocir_namespace" { description = "OCIR tenancy namespace" default = "idfx2prp9pwc" }
