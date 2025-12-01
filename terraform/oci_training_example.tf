@@ -35,6 +35,7 @@ provider "oci" {
 resource "oci_objectstorage_bucket" "features_bucket" {
   compartment_id = var.compartment_ocid
   name           = var.bucket_name
+  namespace      = var.ocir_namespace
 }
 
 # Create a VCN and subnet if an existing subnet OCID is not provided.
@@ -66,24 +67,44 @@ resource "oci_core_instance" "training_vm" {
   source_details {
     # Use an Oracle-provided Linux image or custom image OCID
     source_type = "image"
-    image_id = var.image_id
+    source_id = var.image_id
   }
 
   metadata = {
     ssh_authorized_keys = file(var.ssh_pub_key_path)
-    user_data = base64encode(templatefile("${path.module}/startup.sh", {
-      GIT_REPO       = var.git_repo,
-      REPO_TARBALL   = var.repo_tarball,
-      ARTIFACT_BUCKET= var.bucket_name,
-      OCIR_USERNAME  = var.ocir_user,
-      OCIR_PASSWORD  = var.ocir_auth_token,
-      OCIR_REGISTRY  = var.ocir_registry,
-      DOCKER_IMAGE   = var.docker_image,
-      RUN_SMOKE      = tostring(var.run_smoke),
-      FEATURES_ZIP   = var.features_zip,
-      MANIFEST_ZIP   = var.manifest_zip,
-      OCIR_NAMESPACE = var.ocir_namespace
-    }))
+    user_data = base64encode(
+      replace(
+        replace(
+          replace(
+            replace(
+              replace(
+                replace(
+                  replace(
+                    replace(
+                      replace(
+                        replace(
+                          file("${path.module}/startup.sh"),
+                          "__GIT_REPO__", var.git_repo
+                        ),
+                        "__REPO_TARBALL__", var.repo_tarball
+                      ),
+                      "__ARTIFACT_BUCKET__", var.bucket_name
+                    ),
+                    "__OCIR_USERNAME__", var.ocir_user
+                  ),
+                  "__OCIR_PASSWORD__", var.ocir_auth_token
+                ),
+                "__OCIR_REGISTRY__", var.ocir_registry
+              ),
+              "__DOCKER_IMAGE__", var.docker_image
+            ),
+            "__RUN_SMOKE__", tostring(var.run_smoke)
+          ),
+          "__FEATURES_ZIP__", var.features_zip
+        ),
+        "__MANIFEST_ZIP__", var.manifest_zip
+      )
+    )
   }
 
   create_vnic_details {

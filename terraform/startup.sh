@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Cloud-init helper script used as Terraform `user_data` for the compute instance.
 # This file is used with Terraform `templatefile` so variables like GIT_REPO,
 # ARTIFACT_BUCKET, REPO_TARBALL, OCIR_USERNAME, OCIR_PASSWORD, OCIR_REGISTRY,
@@ -6,18 +6,21 @@
 
 set -eux
 
-# --- injected variables (Terraform templatefile will replace values) ---
-GIT_REPO="${GIT_REPO:-}"
-REPO_TARBALL="${REPO_TARBALL:-}"
-ARTIFACT_BUCKET="${ARTIFACT_BUCKET:-}"
-OCIR_USERNAME="${OCIR_USERNAME:-}"
-OCIR_PASSWORD="${OCIR_PASSWORD:-}"
-OCIR_REGISTRY="${OCIR_REGISTRY:-iad.ocir.io}"
-DOCKER_IMAGE="${DOCKER_IMAGE:-}"
-RUN_SMOKE="${RUN_SMOKE:-0}"
-FEATURES_ZIP="${FEATURES_ZIP:-features.zip}"
-MANIFEST_ZIP="${MANIFEST_ZIP:-manifest.zip}"
-OCIR_NAMESPACE="${OCIR_NAMESPACE:-}"
+# --- injected variables (Terraform will replace these placeholder tokens) ---
+# Placeholders: __GIT_REPO__, __REPO_TARBALL__, __ARTIFACT_BUCKET__,
+# __OCIR_USERNAME__, __OCIR_PASSWORD__, __OCIR_REGISTRY__, __DOCKER_IMAGE__,
+# __RUN_SMOKE__, __FEATURES_ZIP__, __MANIFEST_ZIP__, __OCIR_NAMESPACE__
+GIT_REPO="__GIT_REPO__"
+REPO_TARBALL="__REPO_TARBALL__"
+ARTIFACT_BUCKET="__ARTIFACT_BUCKET__"
+OCIR_USERNAME="__OCIR_USERNAME__"
+OCIR_PASSWORD="__OCIR_PASSWORD__"
+OCIR_REGISTRY="__OCIR_REGISTRY__"
+DOCKER_IMAGE="__DOCKER_IMAGE__"
+RUN_SMOKE="__RUN_SMOKE__"
+FEATURES_ZIP="__FEATURES_ZIP__"
+MANIFEST_ZIP="__MANIFEST_ZIP__"
+OCIR_NAMESPACE="__OCIR_NAMESPACE__"
 # ---------------------------------------------------------------------
 
 # Basic tools
