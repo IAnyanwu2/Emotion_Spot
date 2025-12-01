@@ -10,39 +10,8 @@ terraform {
   }
 }
 
-provider "oci" {
-  # configure provider via environment or shared config file
-  # region = var.region
-}
-
-// Example compute instance. Update shape / image and networking to match your tenancy.
-resource "oci_core_instance" "training_vm" {
-  compartment_id = var.compartment_ocid
-  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
-  shape = var.instance_shape
-
-  display_name = "rcma-training-builder"
-
-  source_details {
-    # Use an Oracle-provided Linux image or custom image OCID
-    source_type = "image"
-    image_id = var.image_id
-  }
-
-  metadata = {
-    ssh_authorized_keys = file(var.ssh_pub_key_path)
-    user_data = base64encode(file("${path.module}/startup.sh"))
-  }
-
-  create_vnic_details {
-    subnet_id = (var.subnet_id != "" && var.subnet_id != "<SUBNET_OCID>") ? var.subnet_id : oci_core_subnet.rcma_subnet.id
-    assign_public_ip = true
-  }
-}
-
-output "instance_id" {
-  value = oci_core_instance.training_vm.id
-}
+// (Provider and the first example instance removed in favor of a single
+// instance block further below that includes templated startup user-data.)
 /*
   Example Terraform for OCI: creates an Object Storage bucket and a Compute instance
   with a startup script to pull a Docker image and run the training command.
@@ -61,12 +30,7 @@ provider "oci" {
   region           = var.region
 }
 
-variable "tenancy_ocid" {}
-variable "user_ocid" {}
-variable "fingerprint" {}
-variable "private_key_path" {}
-variable "region" { default = "us-ashburn-1" }
-variable "compartment_ocid" {}
+// Provider variables are declared in `variables.tf`.
 
 resource "oci_objectstorage_bucket" "features_bucket" {
   compartment_id = var.compartment_ocid
@@ -89,7 +53,7 @@ resource "oci_core_subnet" "rcma_subnet" {
   dns_label            = "rcma"
 }
 
-variable "bucket_name" { default = "emotion-spot-features" }
+// bucket_name variable is declared in `variables.tf`.
 
 # Basic compute instance (replace shape with GPU shape if needed)
 resource "oci_core_instance" "training_vm" {
@@ -127,28 +91,9 @@ resource "oci_core_instance" "training_vm" {
     assign_public_ip = true
   }
 }
-
-      mkdir -p /home/opc/checkpoints
-
-      # Run the training container. Environment vars point to Object Storage bucket and optional checkpoints.
 data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
-
-variable "instance_shape" { default = "VM.Standard.E3.Flex" }
-variable "image_id" {}
-variable "subnet_id" {}
-variable "vcn_cidr" { default = "10.0.0.0/16" }
-variable "subnet_cidr" { default = "10.0.1.0/24" }
-variable "ssh_pub_key_path" {}
-variable "docker_image" { default = "<region>.ocir.io/<tenancy-namespace>/emotion-spot:latest" }
-
-variable "ocir_registry" { description = "OCIR registry host, e.g. iad.ocir.io" }
-variable "ocir_user" { description = "OCIR username (usually <tenancy-namespace>/<user>)" }
-variable "ocir_auth_token" { description = "OCIR auth token (sensitive)", sensitive = true }
-variable "features_prefix" { description = "Object Storage prefix/folder where features & manifest are stored", default = "features/" }
-variable "visual_checkpoint" { description = "Optional visual backbone checkpoint object name in bucket", default = "" }
-variable "audio_checkpoint" { description = "Optional audio backbone checkpoint object name in bucket", default = "" }
 
 output "bucket" {
   value = oci_objectstorage_bucket.features_bucket.name
