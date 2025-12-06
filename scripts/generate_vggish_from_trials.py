@@ -142,16 +142,23 @@ def main():
                 print(f'Failed loading {logmel}: {e}')
                 continue
             # Expect examples to be shaped like (N, 96, 64) or similar
-            try:
-                import torch
-                with torch.no_grad():
-                    emb = model(examples, fs=None)
-                emb_np = emb.cpu().numpy()
-                np.save(vgg_path, emb_np)
-                print(f'Computed vggish from logmel: {vgg_path} (shape {emb_np.shape})')
-                continue
-            except Exception as e:
-                print(f'logmel exists but could not be used as vggish input: {e}')
+                try:
+                    # Ensure examples is 3-D: (num_examples, num_frames, num_bands)
+                    if isinstance(examples, np.ndarray) and examples.ndim == 2:
+                        examples = examples[np.newaxis, ...]
+                    if not (isinstance(examples, np.ndarray) and examples.ndim == 3):
+                        print(f'logmel exists but has unexpected shape {getattr(examples, "shape", None)}; skipping')
+                        continue
+
+                    import torch
+                    with torch.no_grad():
+                        emb = model(examples, fs=None)
+                    emb_np = emb.cpu().numpy()
+                    np.save(vgg_path, emb_np)
+                    print(f'Computed vggish from logmel: {vgg_path} (shape {emb_np.shape})')
+                    continue
+                except Exception as e:
+                    print(f'logmel exists but could not be used as vggish input: {e}')
 
         print(f'Could not find audio/logmel/vggish for trial {trial}; skipping')
 
