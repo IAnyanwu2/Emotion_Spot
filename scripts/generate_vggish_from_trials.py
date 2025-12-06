@@ -180,6 +180,61 @@ def main():
                 # Ensure correct dtype for model
                 examples = examples.astype(np.float32)
 
+                # Ensure examples match VGGish expected shape (NUM_FRAMES, NUM_BANDS)
+                try:
+                    TARGET_FRAMES = vggish_params.NUM_FRAMES
+                    TARGET_BANDS = vggish_params.NUM_BANDS
+                except Exception:
+                    TARGET_FRAMES = 96
+                    TARGET_BANDS = 64
+
+                def _resample_2d(arr, target_f, target_b):
+                    # arr: (frames, bands)
+                    f, b = arr.shape
+                    if f == target_f and b == target_b:
+                        return arr
+
+                    # resample frames first if needed
+                    if f != target_f:
+                        x_old = np.linspace(0.0, 1.0, f)
+                        x_new = np.linspace(0.0, 1.0, target_f)
+                        arr_f = np.empty((target_f, b), dtype=np.float32)
+                        for j in range(b):
+                            arr_f[:, j] = np.interp(x_new, x_old, arr[:, j])
+                        arr = arr_f
+
+                    # resample bands if needed
+                    if b != target_b:
+                        f2, b2 = arr.shape
+                        x_old = np.linspace(0.0, 1.0, b2)
+                        x_new = np.linspace(0.0, 1.0, target_b)
+                        arr_b = np.empty((f2, target_b), dtype=np.float32)
+                        for i in range(f2):
+                            arr_b[i, :] = np.interp(x_new, x_old, arr[i, :])
+                        arr = arr_b
+
+                    return arr
+
+                # If shape doesn't match expected, resample each example
+                n, f_cur, b_cur = examples.shape
+                if (f_cur != TARGET_FRAMES) or (b_cur != TARGET_BANDS):
+                    print(f'Resampling logmel from ({f_cur},{b_cur}) to ({TARGET_FRAMES},{TARGET_BANDS}) for trial {trial}')
+                    resampled = []
+                    for i in range(n):
+                        arr = examples[i]
+                        try:
+                            arr2 = _resample_2d(arr, TARGET_FRAMES, TARGET_BANDS)
+                        except Exception as re:
+                            print(f'Failed resampling example {i} for trial {trial}: {re}; skipping')
+                            arr2 = None
+                        if arr2 is None:
+                            break
+                        resampled.append(arr2)
+                    if len(resampled) != n:
+                        print(f'Resampling failed for trial {trial}; skipping')
+                        continue
+                    examples = np.stack(resampled).astype(np.float32)
+
                 import torch
                 try:
                     with torch.no_grad():
