@@ -27,7 +27,15 @@ class GenericDataArranger(object):
         train_validate_range = self.partition_range['train'] + self.partition_range['validate']
         assert  len(train_validate_range) == self.fold_to_partition['train'] + self.fold_to_partition['validate']
 
-        partition_range = list(np.roll(train_validate_range, fold))
+        # `train_validate_range` is a list of numpy index arrays which can be
+        # inhomogeneous in shape. Using `np.roll` on such a list forces numpy
+        # to coerce to an array and raises a ValueError. Rotate the list with
+        # simple Python slicing which preserves the individual array objects.
+        if isinstance(train_validate_range, list):
+            partition_range = train_validate_range[fold:] + train_validate_range[:fold]
+            partition_range = list(partition_range)
+        else:
+            partition_range = list(np.roll(train_validate_range, fold))
         partition_range += self.partition_range['test'] + self.partition_range['extra']
         partitioned_trial = {}
 
