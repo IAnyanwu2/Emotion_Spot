@@ -191,6 +191,26 @@ def train(args):
     ds = MultimodalDataset(manifest_path=args.manifest, split='train')
     val_ds = MultimodalDataset(manifest_path=args.manifest, split='val')
 
+    # Enforce audio presence if requested: require that each manifest row
+    # points to either a `logmel` file or a precomputed `vggish.npy`.
+    if getattr(args, 'require_audio', False):
+        missing = []
+        from pathlib import Path
+        for i, row in enumerate(ds.manifest):
+            logmel = row.get('logmel')
+            vggish = row.get('vggish') or ''
+            has_logmel = bool(logmel and Path(logmel).exists())
+            has_vggish = bool(vggish and Path(vggish).exists())
+            if not (has_logmel or has_vggish):
+                missing.append((i, row.get('video_feat') or logmel or vggish or 'UNKNOWN'))
+        if missing:
+            print('ERROR: training requires audio files but some manifest entries are missing both logmel and vggish.\n')
+            print(f'Missing audio in {len(missing)} / {len(ds.manifest)} samples. Examples:')
+            for idx, path in missing[:10]:
+                print(f'  idx={idx} sample={path}')
+            print('\nFix by generating per-trial logmel/vggish (see scripts/generate_vggish_from_trials.py) or run with --no-require-audio to continue without audio.')
+            sys.exit(2)
+
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
     vdl = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
 

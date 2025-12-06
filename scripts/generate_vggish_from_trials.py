@@ -62,10 +62,22 @@ def main():
     model = load_vggish(pretrained=True, preprocess=False, postprocess=False)
     model.eval()
 
-    # Walk dataset tree: expecting structure like /.../processed_trials/<modality>/<tag>/<actor>/<trial>
-    trial_dirs = [p for p in DATASET_ROOT.rglob('*') if p.is_dir() and (p / 'logmel.npy').exists() or (p / 'mfcc.npy').exists() or (p / 'prosodic.npy').exists()]
+    # Walk dataset tree: treat a directory as a trial if it CONTAINS any
+    # of the expected audio-derived features anywhere under it. This
+    # avoids missing trials where `logmel.npy` is nested under an
+    # `audio/` subfolder or similar.
+    def _has_any(dirpath, pattern):
+        try:
+            return next(dirpath.rglob(pattern), None) is not None
+        except Exception:
+            return False
 
-    # Fallback: collect directories that are direct children at depth 4 (modality/tag/actor/trial)
+    trial_dirs = [p for p in DATASET_ROOT.rglob('*') if p.is_dir() and (
+        _has_any(p, 'logmel*.npy') or _has_any(p, 'mfcc*.npy') or _has_any(p, 'prosodic*.npy')
+    )]
+
+    # Fallback: if we still didn't find candidates, consider non-empty
+    # directories (previous behaviour) to avoid stopping entirely.
     if not trial_dirs:
         trial_dirs = [p for p in DATASET_ROOT.glob('**/*') if p.is_dir() and len(list(p.iterdir())) > 0]
 
@@ -130,9 +142,10 @@ def main():
             print(f'Saved vggish embeddings to {vgg_path} (shape {emb_np.shape})')
             continue
 
-        # 3) Try to use logmel.npy inside the trial directory
-        logmel = trial / 'logmel.npy'
-        if logmel.exists():
+        # 3) Try to use any `logmel*.npy` anywhere under the trial directory
+        logmel_candidates = list(trial.rglob('logmel*.npy'))
+        if logmel_candidates:
+            logmel = logmel_candidates[0]
             if args.dry_run:
                 print(f'[DRY] Would run vggish on logmel {logmel} -> {vgg_path}')
                 continue
@@ -141,24 +154,25 @@ def main():
             except Exception as e:
                 print(f'Failed loading {logmel}: {e}')
                 continue
-            # Expect examples to be shaped like (N, 96, 64) or similar
-                try:
-                    # Ensure examples is 3-D: (num_examples, num_frames, num_bands)
-                    if isinstance(examples, np.ndarray) and examples.ndim == 2:
-                        examples = examples[np.newaxis, ...]
-                    if not (isinstance(examples, np.ndarray) and examples.ndim == 3):
-                        print(f'logmel exists but has unexpected shape {getattr(examples, "shape", None)}; skipping')
-                        continue
 
-                    import torch
-                    with torch.no_grad():
-                        emb = model(examples, fs=None)
-                    emb_np = emb.cpu().numpy()
-                    np.save(vgg_path, emb_np)
-                    print(f'Computed vggish from logmel: {vgg_path} (shape {emb_np.shape})')
+            # Expect examples to be shaped like (N, num_frames, num_bands) or (num_frames, num_bands)
+            try:
+                if isinstance(examples, np.ndarray) and examples.ndim == 2:
+                    # single example: add batch axis
+                    examples = examples[np.newaxis, ...]
+                if not (isinstance(examples, np.ndarray) and examples.ndim == 3):
+                    print(f'logmel exists but has unexpected shape {getattr(examples, "shape", None)}; skipping')
                     continue
-                except Exception as e:
-                    print(f'logmel exists but could not be used as vggish input: {e}')
+
+                import torch
+                with torch.no_grad():
+                    emb = model(examples, fs=None)
+                emb_np = emb.cpu().numpy()
+                np.save(vgg_path, emb_np)
+                print(f'Computed vggish from logmel: {vgg_path} (shape {emb_np.shape})')
+                continue
+            except Exception as e:
+                print(f'logmel exists but could not be used as vggish input: {e}')
 
         print(f'Could not find audio/logmel/vggish for trial {trial}; skipping')
 
