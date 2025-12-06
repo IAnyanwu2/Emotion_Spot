@@ -157,16 +157,43 @@ def main():
 
             # Expect examples to be shaped like (N, num_frames, num_bands) or (num_frames, num_bands)
             try:
-                if isinstance(examples, np.ndarray) and examples.ndim == 2:
+                # Coerce into a proper numeric ndarray.
+                # Handle cases where the saved file is a list-of-arrays (ragged),
+                # a single 2-D example, or already a 3-D array.
+                examples = np.asarray(examples)
+                if examples.dtype == object:
+                    # try stacking object arrays into a numeric array
+                    try:
+                        examples = np.stack(examples)
+                    except Exception:
+                        print(f'logmel exists but is ragged/object dtype; shape={getattr(examples, "shape", None)}; skipping')
+                        continue
+
+                if examples.ndim == 2:
                     # single example: add batch axis
                     examples = examples[np.newaxis, ...]
-                if not (isinstance(examples, np.ndarray) and examples.ndim == 3):
+
+                if examples.ndim != 3:
                     print(f'logmel exists but has unexpected shape {getattr(examples, "shape", None)}; skipping')
                     continue
 
+                # Ensure correct dtype for model
+                examples = examples.astype(np.float32)
+
                 import torch
-                with torch.no_grad():
-                    emb = model(examples, fs=None)
+                try:
+                    with torch.no_grad():
+                        emb = model(examples, fs=None)
+                except Exception as inner_e:
+                    # Log detailed debug info so we can see what went wrong
+                    try:
+                        shape = getattr(examples, 'shape', None)
+                        dtype = getattr(examples, 'dtype', None)
+                        print(f'Error running model on logmel example: {inner_e}; examples.shape={shape}; examples.dtype={dtype}; examples_type={type(examples)}')
+                    except Exception:
+                        print(f'Error running model on logmel example and failed to introspect examples: {inner_e}')
+                    raise
+
                 emb_np = emb.cpu().numpy()
                 np.save(vgg_path, emb_np)
                 print(f'Computed vggish from logmel: {vgg_path} (shape {emb_np.shape})')
