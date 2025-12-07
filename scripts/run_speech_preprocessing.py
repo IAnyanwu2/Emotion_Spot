@@ -47,6 +47,7 @@ def main():
     parser.add_argument('--vosk', help='Path to VOSK model directory')
     parser.add_argument('--part', type=int, default=-1, help='Which part to process (-1 = all)')
     parser.add_argument('--python-package-path', default='./abaw6_preprocessing', help='Path to preprocessing package')
+    parser.add_argument('--dry-run', action='store_true', help='Validate resources and list trials/files without running heavy processing')
     args = parser.parse_args()
 
     missing = check_packages()
@@ -95,8 +96,46 @@ def main():
     print('  load_directory =', project_config['load_directory'])
     print('  vosk model =', project_config['speech_model']['path'])
 
-    # Instantiate preprocessing and run the parts needed
+    # Instantiate preprocessing
     pre = PreprocessingABAW5(args.part, project_config)
+
+    # Dry-run: validate models/paths and list which trials would be processed
+    if args.dry_run:
+        print('Dry-run: generating per-trial information (no heavy processing will run)')
+        pre.generate_per_trial_info_dict()
+        trials = pre.per_trial_info
+        print(f'Total trials selected for this run: {len(trials)}')
+
+        output_root = project_config['output_root_directory']
+        npy_folder = project_config.get('npy_folder', 'npy')
+
+        required_files = ['bert.npy', 'vggish.npy', 'logmel.npy', 'mfcc.npy', 'prosodic.npy']
+        missing = {f: 0 for f in required_files}
+        sample_missing = {f: [] for f in required_files}
+
+        for idx, record in enumerate(trials):
+            # derive output filename as preprocessing would do
+            subject_no = record.get('subject_no', 0)
+            trial_no = record.get('trial_no', 1)
+            output_filename = pre.get_output_filename(subject_no=subject_no, trial_no=trial_no)
+            trial_npy_dir = os.path.join(output_root, npy_folder, output_filename)
+
+            for fname in required_files:
+                fp = os.path.join(trial_npy_dir, fname)
+                if not os.path.isfile(fp):
+                    missing[fname] += 1
+                    if len(sample_missing[fname]) < 5:
+                        sample_missing[fname].append(fp)
+
+        print('\nMissing files summary:')
+        for f in required_files:
+            print(f' - {f}: {missing[f]} missing')
+            for s in sample_missing[f]:
+                print('    ', s)
+
+        print('\nDry-run complete. No changes were made.')
+        sys.exit(0)
+
     # Generate per-trial info and run the pipeline
     print('Generating per-trial information...')
     pre.generate_per_trial_info_dict()
