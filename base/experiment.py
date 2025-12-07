@@ -109,12 +109,39 @@ class GenericExperiment(GenericImageExperiment):
         self.time_delay = self.get_time_delay(self.config)
 
         self.continuous_label_dim = self.get_selected_continuous_label_dim()
+        # Try to locate dataset_info.pkl in the provided dataset_path. If it's
+        # not found there, walk up parent directories until we find it. When
+        # found, set `self.dataset_path` to the folder containing the file so
+        # subsequent lookups (e.g., mean_std_info.pkl) use the same root.
+        dataset_info_path = os.path.join(self.dataset_path, "dataset_info.pkl")
+        if not os.path.isfile(dataset_info_path):
+            search_path = os.path.abspath(self.dataset_path)
+            found = None
+            while True:
+                candidate = os.path.join(search_path, "dataset_info.pkl")
+                if os.path.isfile(candidate):
+                    found = candidate
+                    break
+                parent = os.path.dirname(search_path)
+                if parent == search_path:
+                    break
+                search_path = parent
 
-        self.dataset_info = load_pickle(os.path.join(self.dataset_path, "dataset_info.pkl"))
+            if found:
+                # Use the directory that contains the dataset_info.pkl
+                self.dataset_path = os.path.dirname(found)
+                dataset_info_path = found
+                print(f"Found dataset_info.pkl at: {dataset_info_path}; using dataset_path={self.dataset_path}")
+            else:
+                raise FileNotFoundError(
+                    f"dataset_info.pkl not found under '{self.dataset_path}' or any parent directories.\n"
+                    "Create it using `scripts/generate_dataset_info.py --manifest <manifest.csv>` or copy an existing file into the dataset folder."
+                )
+
+        # Load dataset_info and continue preparing the experiment
+        self.dataset_info = load_pickle(dataset_info_path)
         self.init_randomness()
         self.data_arranger = self.init_data_arranger()
-        print("till here ok")
-        sys.exit()
         if self.calc_mean_std:
             self.calc_mean_std_fn()
         self.mean_std_dict = load_pickle(os.path.join(self.dataset_path, "mean_std_info.pkl"))

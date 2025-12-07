@@ -73,7 +73,10 @@ class GenericDataArranger(object):
                 for path, _, _, _ in trial_of_a_partition:
                     data = load_npy(path, feature)
                     data = data.flatten()
-                    lengths += len(data)
+                    if data.size == 0:
+                        # missing feature file for this trial — skip
+                        continue
+                    lengths += data.size
                     sums += data.sum()
                 mean_std_dict[partition][feature]['mean'] = sums / (lengths + 1e-10)
 
@@ -86,10 +89,20 @@ class GenericDataArranger(object):
                 for path, _, _, _ in trial_of_a_partition:
                     data = load_npy(path, feature)
                     data = data.flatten()
-                    lengths += len(data)
+                    if data.size == 0:
+                        continue
+                    lengths += data.size
                     x_minus_mean_square += np.sum((data - mean) ** 2)
-                x_minus_mean_square_divide_N_minus_1 = x_minus_mean_square / (lengths - 1)
-                mean_std_dict[partition][feature]['std'] = np.sqrt(x_minus_mean_square_divide_N_minus_1)
+                # If there are not enough samples to compute an unbiased std
+                # (N-1 <= 0), fall back to 0.0 to avoid division by zero.
+                if lengths <= 1:
+                    # Avoid zero std which would cause division-by-zero during
+                    # normalization. Use 1.0 as a neutral fallback so values
+                    # are centered but not scaled to infinity.
+                    mean_std_dict[partition][feature]['std'] = 1.0
+                else:
+                    x_minus_mean_square_divide_N_minus_1 = x_minus_mean_square / (lengths - 1)
+                    mean_std_dict[partition][feature]['std'] = np.sqrt(x_minus_mean_square_divide_N_minus_1)
 
         return mean_std_dict
 
@@ -107,7 +120,12 @@ class GenericDataArranger(object):
         return feature_list
 
     def generate_raw_trial_list(self, dataset_path):
-        trial_path = os.path.join(dataset_path, self.dataset_info['data_folder'])
+        # Avoid duplicating the data_folder if dataset_path already ends with it.
+        data_folder = self.dataset_info.get('data_folder', '')
+        if os.path.basename(os.path.normpath(dataset_path)) == data_folder:
+            trial_path = dataset_path
+        else:
+            trial_path = os.path.join(dataset_path, data_folder)
 
         trial_dict = OrderedDict({'train': [], 'validate': [], 'extra': [], 'test': []})
         for idx, partition in enumerate(self.generate_iterator()):
@@ -118,6 +136,13 @@ class GenericDataArranger(object):
             trial = self.dataset_info['trial'][idx]
             path = os.path.join(trial_path, trial)
             length = self.dataset_info['length'][idx]
+
+            # If the trial folder does not exist on disk, skip it and log once
+            # (avoids hard crashes when some features are not present).
+            if not os.path.isdir(path):
+                if self.debug:
+                    print(f"Warning: trial path does not exist, skipping: {path}")
+                continue
 
             trial_dict[partition].append([path, trial, length])
 
@@ -253,19 +278,33 @@ class GenericDataset(Dataset):
         return example
 
     def load_data(self, path, indices, feature):
-        filename = os.path.join(path, feature + ".npy")
-
         # For the test set, labels of zeros are generated as dummies.
         data = np.zeros(((len(indices),) + self.feature_dimension[feature]), dtype=np.float32)
 
-        if os.path.isfile(filename):
-            if self.feature_extraction:
-                data = np.load(filename, mmap_mode='c')
-            else:
-                data = np.load(filename, mmap_mode='c')[indices]
+        # Use load_npy which returns an empty array for missing/broken files
+        loaded = load_npy(path, feature)
+        if loaded is None or getattr(loaded, 'size', 0) == 0:
+            # missing feature: return zero-padded example
+            return data
 
-            if "continuous_label" in feature:
-                data = self.processing_label(data)
+        # If feature_extraction is requested, return the full loaded array.
+        if self.feature_extraction:
+            data = loaded
+        else:
+            # Attempt to index into the loaded array. If indexing fails
+            # (ragged arrays, 1D arrays), fall back to returning what we can.
+            try:
+                data = loaded[indices]
+            except Exception:
+                # As a fallback, try to broadcast or slice safely.
+                try:
+                    data = loaded[:len(indices)]
+                except Exception:
+                    # Give up and return zeros (already assigned)
+                    return data
+
+        if "continuous_label" in feature:
+            data = self.processing_label(data)
         return data
 
     def processing_label(self, label):
